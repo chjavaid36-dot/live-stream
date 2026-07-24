@@ -21,27 +21,34 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
-    - name: Install FFmpeg and yt-dlp
+    - name: Install Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y ffmpeg
+        sudo apt-get install -y ffmpeg curl jq
         python -m pip install --upgrade pip
-        pip install yt-dlp
+        pip install yt-dlp streamlink
 
-    - name: Create Python Script
+    - name: Run Live Streaming
+      env:
+        VIDEO_URL: ${{ github.event.inputs.video_url }}
+        STREAM_KEY: ${{ github.event.inputs.stream_key }}
       run: |
         cat << 'EOF' > run_stream.py
-        import subprocess, sys, os, yt_dlp
+        import subprocess, sys, os
 
         v_url = os.environ.get('VIDEO_URL')
         s_key = os.environ.get('STREAM_KEY')
 
-        ydl_opts = {'format': 'best', 'quiet': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(v_url, download=False)
-            stream_direct_url = info['url']
+        # Extract direct stream URL using streamlink (Bypasses YouTube bot block)
+        try:
+            cmd = f"streamlink --stream-url {v_url} best"
+            stream_direct_url = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
+        except Exception:
+            # Fallback to yt-dlp with android client
+            cmd = f"yt-dlp -g --extractor-args 'youtube:player_client=android' {v_url}"
+            stream_direct_url = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
 
         filter_v = (
             "select='lt(mod(t,26),25)',setpts=N/FRAME_RATE/TB,"
@@ -68,10 +75,5 @@ jobs:
         subprocess.run(ffmpeg_cmd)
         EOF
 
-    - name: Start Live Stream On-The-Fly
-      env:
-        VIDEO_URL: ${{ github.event.inputs.video_url }}
-        STREAM_KEY: ${{ github.event.inputs.stream_key }}
-      run: |
         python run_stream.py
         
