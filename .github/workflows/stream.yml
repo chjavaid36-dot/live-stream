@@ -56,23 +56,20 @@ jobs:
                 print(e.stderr)
             sys.exit(1)
 
-        # Anti-copyright editing filters
+        # CLEAN Anti-copyright filters (Prevents 360/VR Glitch completely)
         filter_v = (
-            "select='lt(mod(t,26),25)',setpts=N/FRAME_RATE/TB,"
-            "hflip,scale=1920:1080,"
-            "crop=w='if(lt(mod(t,78),26),iw,if(lt(mod(t,78),52),iw*0.92,iw*0.95))':"
-                 "h='if(lt(mod(t,78),26),ih,if(lt(mod(t,78),52),ih*0.04,ih*0.01))':"
-                 "x='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),iw*0.04,iw*0.02))':"
-                 "y='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),ih*0.04,ih*0.01))':exact=1,"
-            "scale=1920:1080,unsharp=5:5:1.5:5:5:1.5,eq=contrast=1.15:saturation=1.35:brightness=0.01,"
-            "drawtext=text='ANIME UNDERWORLD':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=36:fontcolor=white@0.15:box=0"
+            "scale=1920:1080:force_original_aspect_ratio=decrease,"
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
+            "eq=contrast=1.05:saturation=1.15:brightness=0.01,"
+            "unsharp=3:3:1.0:3:3:1.0,"
+            "drawtext=text='ANIME UNDERWORLD':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=36:fontcolor=white@0.12:box=0"
         )
-        filter_a = "aselect='lt(mod(t,26),25)',asetpts=N/SR/TB,asetrate=44100*1.04,atempo=0.96"
+        filter_a = "asetrate=44100*1.02,atempo=0.98"
 
-        # FFmpeg command with Infinite Loop (-stream_loop -1) and strict 16:9 1080p
+        # FFmpeg strictly configured for Standard Flat 1080p HD Video
         ffmpeg_cmd = [
             'ffmpeg', '-y',
-            '-stream_loop', '-1',       # Infinite loop so stream stays LIVE
+            '-stream_loop', '-1',
             '-re',
             '-i', stream_direct_url,
             '-vf', filter_v,
@@ -80,10 +77,9 @@ jobs:
             '-c:v', 'libx264',
             '-preset', 'ultrafast',
             '-tune', 'zerolatency',
-            '-b:v', '3000k',
-            '-maxrate', '3500k',
-            '-bufsize', '6000k',
-            '-aspect', '16:9',          # Strict flat 16:9 format (No 360°/VR)
+            '-b:v', '3500k',
+            '-maxrate', '4000k',
+            '-bufsize', '8000k',
             '-pix_fmt', 'yuv420p',
             '-g', '50',
             '-c:a', 'aac',
