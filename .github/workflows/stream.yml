@@ -28,7 +28,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ffmpeg curl
         python -m pip install --upgrade pip
-        pip install requests yt-dlp
+        pip install --upgrade yt-dlp
 
     - name: Run Live Streaming
       env:
@@ -36,52 +36,30 @@ jobs:
         STREAM_KEY: ${{ github.event.inputs.stream_key }}
       run: |
         cat << 'EOF' > run_stream.py
-        import subprocess, sys, os, requests, json
+        import subprocess, sys, os
 
-        v_url = os.environ.get('VIDEO_URL')
-        s_key = os.environ.get('STREAM_KEY')
+        v_url = os.environ.get('VIDEO_URL', '').strip()
+        s_key = os.environ.get('STREAM_KEY', '').strip()
 
-        stream_direct_url = None
+        print("Fetching stream using TV/iOS client...")
 
-        # Method 1: Try Cobalt API
+        # Extract direct stream URL using TV Client to bypass bot block
+        cmd = [
+            'yt-dlp', '-g',
+            '-f', 'best[ext=mp4]/best',
+            '--extractor-args', 'youtube:player_client=tvhtml5,ios',
+            v_url
+        ]
+
         try:
-            cobalt_payload = {
-                "url": v_url,
-                "videoQuality": "1080",
-                "isAudioOnly": False
-            }
-            cobalt_headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            }
-            res = requests.post("https://api.cobalt.tools/api/json", json=cobalt_payload, headers=cobalt_headers, timeout=12)
-            if res.status_code == 200:
-                data = res.json()
-                if "url" in data:
-                    stream_direct_url = data["url"]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            stream_direct_url = res.stdout.strip().split('\n')[0]
+            print("Successfully extracted Direct Stream URL!")
         except Exception as e:
-            print(f"Cobalt failed: {e}")
-
-        # Method 2: Fallback to PipePipe API
-        if not stream_direct_url:
-            try:
-                import re
-                v_id = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", v_url).group(1)
-                res = requests.get(f"https://pipedapi.kavin.rocks/streams/{v_id}", timeout=10)
-                if res.status_code == 200:
-                    data = res.json()
-                    if "hls" in data and data["hls"]:
-                        stream_direct_url = data["hls"]
-                    elif "videoStreams" in data and len(data["videoStreams"]) > 0:
-                        stream_direct_url = data["videoStreams"][0]["url"]
-            except Exception as e:
-                print(f"PipePipe failed: {e}")
-
-        if not stream_direct_url:
-            print("ERROR: Could not fetch stream URL from any API.")
-            sys.exit(1)
-
-        print(f"Success! Direct Stream Link Fetched.")
+            print("Failed with TV client. Trying fallback...")
+            cmd_fallback = ['yt-dlp', '-g', '--extractor-args', 'youtube:player_client=android', v_url]
+            res_fb = subprocess.run(cmd_fallback, capture_output=True, text=True, check=True)
+            stream_direct_url = res_fb.stdout.strip().split('\n')[0]
 
         filter_v = (
             "select='lt(mod(t,26),25)',setpts=N/FRAME_RATE/TB,"
@@ -108,7 +86,5 @@ jobs:
         subprocess.run(ffmpeg_cmd)
         EOF
 
-        python run_stream.py
-        
         python run_stream.py
         
