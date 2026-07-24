@@ -16,10 +16,10 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -30,13 +30,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install yt-dlp
 
-    - name: Start Live Stream On-The-Fly
+    - name: Create Python Script
       run: |
-        python -c "
-        import subprocess, sys, yt_dlp
+        cat << 'EOF' > run_stream.py
+        import subprocess, sys, os, yt_dlp
 
-        v_url = '${{ github.event.inputs.video_url }}'
-        s_key = '${{ github.event.inputs.stream_key }}'
+        v_url = os.environ.get('VIDEO_URL')
+        s_key = os.environ.get('STREAM_KEY')
 
         ydl_opts = {'format': 'best', 'quiet': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -44,16 +44,16 @@ jobs:
             stream_direct_url = info['url']
 
         filter_v = (
-            \"select='lt(mod(t,26),25)',setpts=N/FRAME_RATE/TB,\"
-            \"hflip,scale=1920:1080,\"
-            \"crop=w='if(lt(mod(t,78),26),iw,if(lt(mod(t,78),52),iw*0.92,iw*0.95))':\"
-                 \"h='if(lt(mod(t,78),26),ih,if(lt(mod(t,78),52),ih*0.92,ih*0.95))':\"
-                 \"x='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),iw*0.04,iw*0.02))':\"
-                 \"y='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),ih*0.04,ih*0.01))':exact=1,\"
-            \"scale=1920:1080,unsharp=5:5:1.5:5:5:1.5,eq=contrast=1.15:saturation=1.35:brightness=0.01,\"
-            \"drawtext=text='ANIME UNDERWORLD':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=36:fontcolor=white@0.15:box=0\"
+            "select='lt(mod(t,26),25)',setpts=N/FRAME_RATE/TB,"
+            "hflip,scale=1920:1080,"
+            "crop=w='if(lt(mod(t,78),26),iw,if(lt(mod(t,78),52),iw*0.92,iw*0.95))':"
+                 "h='if(lt(mod(t,78),26),ih,if(lt(mod(t,78),52),ih*0.92,ih*0.95))':"
+                 "x='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),iw*0.04,iw*0.02))':"
+                 "y='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),ih*0.04,ih*0.01))':exact=1,"
+            "scale=1920:1080,unsharp=5:5:1.5:5:5:1.5,eq=contrast=1.15:saturation=1.35:brightness=0.01,"
+            "drawtext=text='ANIME UNDERWORLD':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=36:fontcolor=white@0.15:box=0"
         )
-        filter_a = \"aselect='lt(mod(t,26),25)',asetpts=N/SR/TB,asetrate=44100*1.04,atempo=0.96\"
+        filter_a = "aselect='lt(mod(t,26),25)',asetpts=N/SR/TB,asetrate=44100*1.04,atempo=0.96"
 
         ffmpeg_cmd = [
             'ffmpeg', '-y', '-re',
@@ -66,5 +66,12 @@ jobs:
         ]
 
         subprocess.run(ffmpeg_cmd)
-        "
+        EOF
+
+    - name: Start Live Stream On-The-Fly
+      env:
+        VIDEO_URL: ${{ github.event.inputs.video_url }}
+        STREAM_KEY: ${{ github.event.inputs.stream_key }}
+      run: |
+        python run_stream.py
         
