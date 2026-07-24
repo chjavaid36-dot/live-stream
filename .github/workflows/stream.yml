@@ -1,0 +1,70 @@
+name: YouTube Live Stream
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'Direct Video / Live Stream URL'
+        required: true
+      stream_key:
+        description: 'YouTube Stream Key'
+        required: true
+
+jobs:
+  stream:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install FFmpeg and yt-dlp
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+        python -m pip install --upgrade pip
+        pip install yt-dlp
+
+    - name: Start Live Stream On-The-Fly
+      run: |
+        python -c "
+        import subprocess, sys, yt_dlp
+
+        v_url = '${{ github.event.inputs.video_url }}'
+        s_key = '${{ github.event.inputs.stream_key }}'
+
+        ydl_opts = {'format': 'best', 'quiet': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(v_url, download=False)
+            stream_direct_url = info['url']
+
+        filter_v = (
+            \"select='lt(mod(t,26),25)',setpts=N/FRAME_RATE/TB,\"
+            \"hflip,scale=1920:1080,\"
+            \"crop=w='if(lt(mod(t,78),26),iw,if(lt(mod(t,78),52),iw*0.92,iw*0.95))':\"
+                 \"h='if(lt(mod(t,78),26),ih,if(lt(mod(t,78),52),ih*0.92,ih*0.95))':\"
+                 \"x='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),iw*0.04,iw*0.02))':\"
+                 \"y='if(lt(mod(t,78),26),0,if(lt(mod(t,78),52),ih*0.04,ih*0.01))':exact=1,\"
+            \"scale=1920:1080,unsharp=5:5:1.5:5:5:1.5,eq=contrast=1.15:saturation=1.35:brightness=0.01,\"
+            \"drawtext=text='ANIME UNDERWORLD':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=36:fontcolor=white@0.15:box=0\"
+        )
+        filter_a = \"aselect='lt(mod(t,26),25)',asetpts=N/SR/TB,asetrate=44100*1.04,atempo=0.96\"
+
+        ffmpeg_cmd = [
+            'ffmpeg', '-y', '-re',
+            '-i', stream_direct_url,
+            '-vf', filter_v,
+            '-af', filter_a,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-f', 'flv', f'rtmp://a.rtmp.youtube.com/live2/{s_key}'
+        ]
+
+        subprocess.run(ffmpeg_cmd)
+        "
+        
