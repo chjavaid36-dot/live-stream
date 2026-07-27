@@ -1,10 +1,10 @@
-name: YouTube Live Stream from Google Drive
+name: YouTube Live Stream Auto-Split - Google Drive
 
 on:
   workflow_dispatch:
     inputs:
       gdrive_url:
-        description: 'Google Drive Video or Folder Shareable Link'
+        description: 'Google Drive Folder Shareable Link'
         required: true
       stream_key:
         description: 'YouTube Stream Key'
@@ -28,70 +28,103 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ffmpeg curl
         python -m pip install --upgrade pip
-        pip install --upgrade --no-cache-dir yt-dlp
+        pip install --upgrade --no-cache-dir gdown yt-dlp
 
-    - name: Run Live Streaming
+    - name: Run Direct Live Streaming Process
       env:
         GDRIVE_URL: ${{ github.event.inputs.gdrive_url }}
         STREAM_KEY: ${{ github.event.inputs.stream_key }}
       run: |
         cat << 'EOF' > run_stream.py
-        import subprocess, sys, os, time
+        import subprocess, sys, os, time, glob
 
         g_url = os.environ.get('GDRIVE_URL', '').strip()
         s_key = os.environ.get('STREAM_KEY', '').strip()
 
-        # Anti-copyright & HD Filter Configuration
+        # 🚀 PERFECT VISUAL & ANTI-COPYRIGHT FILTER
         filter_v = (
             "scale=1920:1080:force_original_aspect_ratio=decrease,"
             "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
-            "eq=contrast=1.02:saturation=1.05:brightness=0.01,"
-            "unsharp=3:3:0.5:3:3:0.5,"
-            "drawtext=text='LIVE STREAM 24/7':x=w-text_w-30:y=30:fontsize=28:fontcolor=white@0.3"
+            "eq=contrast=1.04:saturation=1.08:brightness=0.02:gamma=1.02,"
+            "noise=alls=5:allf=t+u,"
+            "vignette='PI/4',"
+            "unsharp=3:3:0.8:3:3:0.8,"
+            "drawtext=text='AI SETORI':x=w-text_w-30:y=30:fontsize=28:fontcolor=white@0.3"
         )
 
-        filter_a = "asetrate=44100*1.01,atempo=1/1.01,aresample=async=1:min_hard_comp=0.100000:first_pts=0"
+        # 🎵 PERFECT AUDIO SYNC ANTI-COPYRIGHT FILTER
+        filter_a = "volume=1.05,aresample=44100"
 
-        print("Starting Continuous Streaming Loop...")
+        print("🔍 Downloading videos from Google Drive folder...")
+        os.makedirs("downloads", exist_ok=True)
+        
+        # Download folder via gdown
+        dl_cmd = ['gdown', '--folder', g_url, '-O', 'downloads']
 
-        while True:
-            print("\nFetching stream URL from Google Drive...")
-            cmd = ['yt-dlp', '-g', '--flat-playlist', g_url]
-
+        try:
+            subprocess.run(dl_cmd, check=True)
+        except Exception as e:
+            print("⚠️ Folder download failed... Trying direct download as single file.")
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                urls = [u for u in res.stdout.strip().split('\n') if u]
-                print(f"Found {len(urls)} stream URL(s).")
-            except Exception as e:
-                print("Error fetching URLs. Retrying in 10 seconds...")
-                time.sleep(10)
-                continue
+                gdown_file_cmd = ['gdown', g_url, '-O', 'downloads/video.mp4']
+                subprocess.run(gdown_file_cmd, check=True)
+            except Exception as ex:
+                print("❌ Download failed. Check drive link permissions!")
+                sys.exit(1)
 
-            for idx, stream_direct_url in enumerate(urls, 1):
-                print(f"\n▶ Now Streaming Video {idx} of {len(urls)}...")
+        # Get all downloaded video files
+        video_extensions = ('*.mp4', '*.mkv', '*.mov', '*.avi', '*.webm')
+        video_files = []
+        for ext in video_extensions:
+            video_files.extend(glob.glob(f"downloads/**/{ext}", recursive=True))
 
-                ffmpeg_cmd = [
-                    'ffmpeg', '-y',
-                    '-re',
-                    '-i', stream_direct_url,
-                    '-vf', filter_v,
-                    '-af', filter_a,
-                    '-c:v', 'libx264',
-                    '-preset', 'ultrafast',
-                    '-tune', 'zerolatency',
-                    '-b:v', '4500k',
-                    '-maxrate', '5000k',
-                    '-bufsize', '10000k',
-                    '-pix_fmt', 'yuv420p',
-                    '-g', '50',
-                    '-c:a', 'aac',
-                    '-b:a', '128k',
-                    '-ar', '44100',
-                    '-f', 'flv', f'rtmp://a.rtmp.youtube.com/live2/{s_key}'
-                ]
+        video_files.sort()
 
-                subprocess.run(ffmpeg_cmd)
+        if not video_files:
+            print("❌ No video files found in the downloaded Google Drive folder!")
+            sys.exit(1)
+
+        print(f"✅ Found {len(video_files)} video file(s) for streaming.")
+
+        # Stream each downloaded video with Perfect Audio-Video Sync
+        for idx, video_path in enumerate(video_files, 1):
+            print(f"\n==================================================")
+            print(f"🔴 Streaming Video {idx} of {len(video_files)}: {os.path.basename(video_path)}")
+            print(f"==================================================")
+
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-re',
+                '-i', video_path,
+                '-vf', filter_v,
+                '-af', filter_a,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-tune', 'zerolatency',
+                '-b:v', '4500k',
+                '-maxrate', '5000k',
+                '-bufsize', '10000k',
+                '-pix_fmt', 'yuv420p',
+                '-g', '50',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-async', '1',
+                '-vsync', '1',
+                '-f', 'flv', f'rtmp://a.rtmp.youtube.com/live2/{s_key}'
+            ]
+
+            subprocess.run(ffmpeg_cmd)
+
+            print(f"\n⏹ Video {idx} finished. Stream disconnected.")
+
+            if idx < len(video_files):
+                print("⏳ Waiting 15 seconds before starting next video stream...")
+                time.sleep(15)
+
+        print("\n🎉 All videos streamed with perfect audio-video sync successfully!")
 
         EOF
 
         python run_stream.py
+        
